@@ -1947,11 +1947,14 @@ class UserDefinedFunction(object):
 @since(1.3)
 def udf(f=None, returnType=StringType(), nullable=True):
     """Creates a :class:`Column` expression representing a user defined function (UDF).
+  
     .. note:: The user-defined functions must be deterministic. Due to optimization,
         duplicate invocations may be eliminated or the function may even be invoked more times than
         it is present in the query.
+
     :param f: python function if used as a standalone function
     :param returnType: a :class:`pyspark.sql.types.DataType` object
+
     >>> from pyspark.sql.types import IntegerType
     >>> slen = udf(lambda s: len(s), IntegerType())
     >>> @udf
@@ -1973,7 +1976,7 @@ def udf(f=None, returnType=StringType(), nullable=True):
     +----------+--------------+------------+
     """
     def _udf(f, returnType=StringType(), nullable=True):
-        udf_obj = UserDefinedFunction(f, returnType, nullable)
+        udf_obj = UserDefinedFunction(f, returnType, None, nullable)
         return udf_obj._wrapped()
 
     # decorator @udf, @udf() or @udf(dataType())
