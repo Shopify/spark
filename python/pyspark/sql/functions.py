@@ -1919,18 +1919,39 @@ class UserDefinedFunction(object):
         sc = SparkContext._active_spark_context
         return Column(judf.apply(_to_seq(sc, cols, _to_java_column)))
 
+    def _wrapped(self):
+        """
+        Wrap this udf with a function and attach docstring from func
+        """
+
+        # It is possible for a callable instance without __name__ attribute or/and
+        # __module__ attribute to be wrapped here. For example, functools.partial. In this case,
+        # we should avoid wrapping the attributes from the wrapped function to the wrapper
+        # function. So, we take out these attribute names from the default names to set and
+        # then manually assign it after being wrapped.
+        assignments = tuple(
+            a for a in functools.WRAPPER_ASSIGNMENTS if a != '__name__' and a != '__module__')
+
+        @functools.wraps(self.func, assigned=assignments)
+        def wrapper(*args):
+            return self(*args)
+
+        wrapper.__name__ = self._name
+        wrapper.__module__ = (self.func.__module__ if hasattr(self.func, '__module__')
+                              else self.func.__class__.__module__)
+        wrapper.func = self.func
+        wrapper.returnType = self.returnType
+
+        return wrapper
 
 @since(1.3)
 def udf(f=None, returnType=StringType(), nullable=True):
     """Creates a :class:`Column` expression representing a user defined function (UDF).
-
     .. note:: The user-defined functions must be deterministic. Due to optimization,
         duplicate invocations may be eliminated or the function may even be invoked more times than
         it is present in the query.
-
     :param f: python function if used as a standalone function
     :param returnType: a :class:`pyspark.sql.types.DataType` object
-
     >>> from pyspark.sql.types import IntegerType
     >>> slen = udf(lambda s: len(s), IntegerType())
     >>> @udf
@@ -1952,16 +1973,8 @@ def udf(f=None, returnType=StringType(), nullable=True):
     +----------+--------------+------------+
     """
     def _udf(f, returnType=StringType(), nullable=True):
-        udf_obj = UserDefinedFunction(f, returnType, nullable=nullable)
-
-        @functools.wraps(f)
-        def wrapper(*args):
-            return udf_obj(*args)
-
-        wrapper.func = udf_obj.func
-        wrapper.returnType = udf_obj.returnType
-
-        return wrapper
+        udf_obj = UserDefinedFunction(f, returnType, nullable)
+        return udf_obj._wrapped()
 
     # decorator @udf, @udf() or @udf(dataType())
     if f is None or isinstance(f, (str, DataType)):
