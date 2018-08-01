@@ -51,7 +51,7 @@ import org.apache.spark.util.{Clock, SystemClock, ThreadUtils, Utils}
 private[history] class SimpleFsHistoryProvider(conf: SparkConf)
   extends ApplicationHistoryProvider with Logging {
 
-  import FsHistoryProvider._
+  import SimpleFsHistoryProvider._
 
   private val logDir = conf.getOption("spark.history.fs.logDirectory")
     .getOrElse(DEFAULT_LOG_DIR)
@@ -72,9 +72,6 @@ private[history] class SimpleFsHistoryProvider(conf: SparkConf)
 
   override def getLastUpdatedTime(): Long = 0
   
-  private val APPL_START_EVENT_PREFIX = "{\"Event\":\"SparkListenerApplicationStart\""
-  private val APPL_END_EVENT_PREFIX = "{\"Event\":\"SparkListenerApplicationEnd\""
-  
   //Return an empty list iterator
   override def getListing(): Iterator[FsApplicationHistoryInfo] = List().iterator
   
@@ -91,13 +88,13 @@ private[history] class SimpleFsHistoryProvider(conf: SparkConf)
       case Some(appId) => {
         val attemptInfo = new FsApplicationAttemptInfo(
           appFileStatus.getPath().getName(),
-          appListener.appName.getOrElse("<Not Started>"),
+          appListener.appName.getOrElse(NOT_STARTED),
           appId,
           appListener.appAttemptId,
           appListener.startTime.getOrElse(-1L),
           appListener.endTime.getOrElse(-1L),
           0L,
-          appListener.sparkUser.getOrElse("<Not Started>"),
+          appListener.sparkUser.getOrElse(NOT_STARTED),
           isApplicationCompleted(appFileStatus),
           appFileStatus.getLen()
         )
@@ -110,12 +107,9 @@ private[history] class SimpleFsHistoryProvider(conf: SparkConf)
   override def getApplicationInfo(appId: String): Option[FsApplicationHistoryInfo] = {
     try {
       val appAttemptInfo = getApplicationAttemptInfo(fs.getFileStatus(new Path(logDir, appId)))
-      appAttemptInfo match {
-        case Some(attemptInfo) =>    
-          Some(new FsApplicationHistoryInfo(attemptInfo.appId, attemptInfo.name, List(attemptInfo)))
-        case None =>
-          None
-      }
+      appAttemptInfo.map(attemptInfo => {
+        new FsApplicationHistoryInfo(attemptInfo.appId, attemptInfo.name, List(attemptInfo))
+      })
     } catch {
       case e: FileNotFoundException =>
         logError(s"File Not Found when trying to load log ${logDir}/${appId}", e)
@@ -128,40 +122,34 @@ private[history] class SimpleFsHistoryProvider(conf: SparkConf)
     try {
       val appFileStatus = fs.getFileStatus(new Path(logDir, appId))
       
-      getApplicationInfo(appId) match {
-        case Some(appInfo) => {  
-          appInfo.attempts.find(_.attemptId == attemptId) match {
-            case Some(attemptInfo) => {
-              val replayBus = new ReplayListenerBus()
-              
-              val ui = {
-                val conf = this.conf.clone()
-                val appSecManager = new SecurityManager(conf)
-                SparkUI.createHistoryUI(conf, replayBus, appSecManager, attemptInfo.name,
-                  HistoryServer.getAttemptURI(attemptInfo.appId, attemptInfo.attemptId),
-                  attemptInfo.startTime
-                )
-                // Do not call ui.bind() to avoid creating a new server for each application
-              }
-              val appListener = replay(appFileStatus, isApplicationCompleted(appFileStatus), replayBus)
-              
-              ui.getSecurityManager.setAcls(HISTORY_UI_ACLS_ENABLE)
-              // make sure to set admin acls before view acls so they are properly picked up
-              val adminAcls = HISTORY_UI_ADMIN_ACLS + "," + appListener.adminAcls.getOrElse("")
-              ui.getSecurityManager.setAdminAcls(adminAcls)
-              ui.getSecurityManager.setViewAcls(attemptInfo.sparkUser, appListener.viewAcls.getOrElse(""))
-              val adminAclsGroups = HISTORY_UI_ADMIN_ACLS_GROUPS + "," +
-                appListener.adminAclsGroups.getOrElse("")
-              ui.getSecurityManager.setAdminAclsGroups(adminAclsGroups)
-              ui.getSecurityManager.setViewAclsGroups(appListener.viewAclsGroups.getOrElse(""))
-                  
-              Some(LoadedAppUI(ui, () => false))
-            }
-            case None => None
+      getApplicationInfo(appId).flatMap(appInfo => {
+        appInfo.attempts.find(_.attemptId == attemptId).map(attemptInfo => {
+          val replayBus = new ReplayListenerBus()
+            
+          val ui = {
+            val conf = this.conf.clone()
+            val appSecManager = new SecurityManager(conf)
+            SparkUI.createHistoryUI(conf, replayBus, appSecManager, attemptInfo.name,
+              HistoryServer.getAttemptURI(attemptInfo.appId, attemptInfo.attemptId),
+              attemptInfo.startTime
+            )
+            // Do not call ui.bind() to avoid creating a new server for each application
           }
-        }
-        case None => None
-      }
+          val appListener = replay(appFileStatus, isApplicationCompleted(appFileStatus), replayBus)
+          
+          ui.getSecurityManager.setAcls(HISTORY_UI_ACLS_ENABLE)
+          // make sure to set admin acls before view acls so they are properly picked up
+          val adminAcls = HISTORY_UI_ADMIN_ACLS + "," + appListener.adminAcls.getOrElse("")
+          ui.getSecurityManager.setAdminAcls(adminAcls)
+          ui.getSecurityManager.setViewAcls(attemptInfo.sparkUser, appListener.viewAcls.getOrElse(""))
+          val adminAclsGroups = HISTORY_UI_ADMIN_ACLS_GROUPS + "," +
+            appListener.adminAclsGroups.getOrElse("")
+          ui.getSecurityManager.setAdminAclsGroups(adminAclsGroups)
+          ui.getSecurityManager.setViewAclsGroups(appListener.viewAclsGroups.getOrElse(""))
+              
+          LoadedAppUI(ui, () => false)
+        })
+      })
     } catch {
         case e: Exception =>
           logError(s"Exception encountered when attempting to load application log ${logDir}/${appId}", e)
@@ -259,37 +247,8 @@ private[history] class SimpleFsHistoryProvider(conf: SparkConf)
   }
 
   override def stop(): Unit = {}
-
-  /**
-   * Comparison function that defines the sort order for the application listing.
-   *
-   * @return Whether `i1` should precede `i2`.
-   */
-  private def compareAppInfo(
-      i1: FsApplicationHistoryInfo,
-      i2: FsApplicationHistoryInfo): Boolean = {
-    val a1 = i1.attempts.head
-    val a2 = i2.attempts.head
-    if (a1.endTime != a2.endTime) a1.endTime >= a2.endTime else a1.startTime >= a2.startTime
-  }
-
-  /**
-   * Comparison function that defines the sort order for application attempts within the same
-   * application. Order is: attempts are sorted by descending start time.
-   * Most recent attempt state matches with current state of the app.
-   *
-   * Normally applications should have a single running attempt; but failure to call sc.stop()
-   * may cause multiple running attempts to show up.
-   *
-   * @return Whether `a1` should precede `a2`.
-   */
-  private def compareAttemptInfo(
-      a1: FsApplicationAttemptInfo,
-      a2: FsApplicationAttemptInfo): Boolean = {
-    a1.startTime >= a2.startTime
-  }
-
-  /**
+  
+   /**
    * Return true when the application has completed.
    */
   private def isApplicationCompleted(entry: FileStatus): Boolean = {
@@ -305,4 +264,14 @@ private[history] class SimpleFsHistoryProvider(conf: SparkConf)
       | FsHistoryProvider: logdir=$logDir,
     """.stripMargin
    }
+}
+
+private[history] object SimpleFsHistoryProvider {
+  val DEFAULT_LOG_DIR = "file:/tmp/spark-events"
+
+  private val NOT_STARTED = "<Not Started>"
+
+  private val APPL_START_EVENT_PREFIX = "{\"Event\":\"SparkListenerApplicationStart\""
+
+  private val APPL_END_EVENT_PREFIX = "{\"Event\":\"SparkListenerApplicationEnd\"" 
 }
