@@ -17,20 +17,20 @@
 
 package org.apache.spark.deploy.history
 
-import java.io.{FileNotFoundException, IOException, OutputStream}
-import java.util.UUID
-import java.util.concurrent.{Executors, ExecutorService, Future, TimeUnit}
+import java.io.{FileNotFoundException, IOException}
+//import java.util.UUID
+//import java.util.concurrent.{Executors, ExecutorService, Future, TimeUnit}
 import java.util.zip.{ZipEntry, ZipOutputStream}
 
 import scala.collection.mutable
 import scala.xml.Node
 
 import com.google.common.io.ByteStreams
-import com.google.common.util.concurrent.{MoreExecutors, ThreadFactoryBuilder}
+//import com.google.common.util.concurrent.{MoreExecutors, ThreadFactoryBuilder}
 import org.apache.hadoop.fs.{FileStatus, Path}
-import org.apache.hadoop.fs.permission.FsAction
-import org.apache.hadoop.hdfs.DistributedFileSystem
-import org.apache.hadoop.hdfs.protocol.HdfsConstants
+//import org.apache.hadoop.fs.permission.FsAction
+//import org.apache.hadoop.hdfs.DistributedFileSystem
+//import org.apache.hadoop.hdfs.protocol.HdfsConstants
 import org.apache.hadoop.security.AccessControlException
 
 import org.apache.spark.{SecurityManager, SparkConf, SparkException}
@@ -39,7 +39,7 @@ import org.apache.spark.internal.Logging
 import org.apache.spark.scheduler._
 import org.apache.spark.scheduler.ReplayListenerBus._
 import org.apache.spark.ui.SparkUI
-import org.apache.spark.util.{Clock, SystemClock, ThreadUtils, Utils}
+//import org.apache.spark.util.{Clock, SystemClock, ThreadUtils, Utils}
 
 /**
  * A class that provides application history from event logs stored in the file system.
@@ -75,7 +75,7 @@ private[history] class SimpleFsHistoryProvider(conf: SparkConf)
   //Return an empty list iterator
   override def getListing(): Iterator[FsApplicationHistoryInfo] = List().iterator
   
-  def getApplicationAttemptInfo(appFileStatus: FileStatus): Option[org.apache.spark.deploy.history.FsApplicationAttemptInfo] = {
+  def getApplicationAttemptInfo(appFileStatus: FileStatus): Option[FsApplicationAttemptInfo] = {
  
     // When getting the Application Info, we really only want the key details - Name, ID, start time, stop time
     val eventsFilter: ReplayEventsFilter = { eventString =>
@@ -147,11 +147,11 @@ private[history] class SimpleFsHistoryProvider(conf: SparkConf)
         })
       })
     } catch {
-        case e: Exception =>
-          logError(s"Exception encountered when attempting to load application log ${logDir}/${appId}", e)
-          None
         case e: FileNotFoundException =>
           logError(s"File Not Found when trying to load log ${logDir}/${appId}", e)
+          None
+        case e: Exception =>
+          logError(s"Exception encountered when attempting to load application log ${logDir}/${appId}", e)
           None
     }
   }
