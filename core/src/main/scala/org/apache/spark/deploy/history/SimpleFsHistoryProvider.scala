@@ -84,24 +84,20 @@ private[history] class SimpleFsHistoryProvider(conf: SparkConf)
     }
      
     val appListener = replay(appFileStatus, isApplicationCompleted(appFileStatus), new ReplayListenerBus(), eventsFilter)
-    appListener.appId match {
-      case Some(appId) => {
-        val attemptInfo = new FsApplicationAttemptInfo(
-          appFileStatus.getPath().getName(),
-          appListener.appName.getOrElse(NOT_STARTED),
-          appId,
-          appListener.appAttemptId,
-          appListener.startTime.getOrElse(-1L),
-          appListener.endTime.getOrElse(-1L),
-          0L,
-          appListener.sparkUser.getOrElse(NOT_STARTED),
-          isApplicationCompleted(appFileStatus),
-          appFileStatus.getLen()
-        )
-        Some(attemptInfo)
-      }
-      case None => None
-    } 
+    appListener.appId.map(appId => {
+      new FsApplicationAttemptInfo(
+        appFileStatus.getPath().getName(),
+        appListener.appName.getOrElse(NOT_STARTED),
+        appId,
+        appListener.appAttemptId,
+        appListener.startTime.getOrElse(-1L),
+        appListener.endTime.getOrElse(-1L),
+        0L,
+        appListener.sparkUser.getOrElse(NOT_STARTED),
+        isApplicationCompleted(appFileStatus),
+        appFileStatus.getLen()
+      )
+    }) 
   }
   
   override def getApplicationInfo(appId: String): Option[FsApplicationHistoryInfo] = {
