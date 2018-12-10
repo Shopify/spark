@@ -39,6 +39,7 @@ import org.apache.spark.internal.Logging
 import org.apache.spark.scheduler._
 import org.apache.spark.scheduler.ReplayListenerBus._
 import org.apache.spark.ui.SparkUI
+import org.apache.spark.deploy.history.ApplicationHistoryProvider
 //import org.apache.spark.util.{Clock, SystemClock, ThreadUtils, Utils}
 
 /**
