@@ -80,14 +80,11 @@ private[history] class SimpleFsHistoryProvider(conf: SparkConf, clock: Clock)
 
   override def getLastUpdatedTime(): Long = 0
   
-  override def getListing(): Iterator[ApplicationInfo] = { null }
+  override def getListing(): Iterator[ApplicationInfo] = { List().iterator }
   
   override def onUIDetached(appId: String, attemptId: Option[String], ui: SparkUI): Unit = { }
-   
-  private val activeUIs = new mutable.HashMap[(String, Option[String]), LoadedAppUI]()
   
-  def getApplicationAttemptInfo(fileStatus: FileStatus): Option[ApplicationAttemptInfo] = {
- 
+  def getApplicationAndAttemptInfo(fileStatus: FileStatus): (Option[ApplicationInfoWrapper], Option[ApplicationAttemptInfo]) = {
     // When getting the Application Info, we really only want the key details - Name, ID, start time, stop time
     val eventsFilter: ReplayEventsFilter = { eventString =>
       eventString.startsWith(APPL_START_EVENT_PREFIX) ||
@@ -95,23 +92,21 @@ private[history] class SimpleFsHistoryProvider(conf: SparkConf, clock: Clock)
     }
 
     // need to get the ApplicationAttemptInfo from the replay to return
-    val logPath = fileStatus.getPath()
     val bus = new ReplayListenerBus()
     val listener = new AppListingListener(fileStatus, clock)
     bus.addListener(listener)
     replay(fileStatus, bus, eventsFilter)
 
-    listener.applicationAttemptInfo
+    (listener.applicationInfo, listener.applicationAttemptInfo)
+  }
+
+  def getApplicationAttemptInfo(fileStatus: FileStatus): Option[ApplicationAttemptInfo] = {
+    getApplicationAndAttemptInfo(fileStatus)._2
   }
   
   def getApplicationInfoWrapper(appId: String): Option[ApplicationInfoWrapper] = {
     val fileStatus = fs.getFileStatus(new Path(logDir, appId))
-    val logPath = fileStatus.getPath()
-    val bus = new ReplayListenerBus()
-    val listener = new AppListingListener(fileStatus, clock)
-    bus.addListener(listener)
-    replay(fileStatus, bus, SELECT_ALL_FILTER)
-    listener.applicationInfo
+    getApplicationAndAttemptInfo(fileStatus)._1
   }
 
   override def getApplicationInfo(appId: String): Option[ApplicationInfo] = {
@@ -119,32 +114,32 @@ private[history] class SimpleFsHistoryProvider(conf: SparkConf, clock: Clock)
   }
 
   override def getAppUI(appId: String, attemptId: Option[String]): Option[LoadedAppUI] = {
-    getApplicationInfoWrapper(appId).map(applicationInfo => {
-      val attemptWrapper = applicationInfo.attempts.head
+    val fileStatus = fs.getFileStatus(new Path(logDir, appId))
+    val bus = new ReplayListenerBus()
+    val listener = new AppListingListener(fileStatus, clock)
+    bus.addListener(listener)
+    replay(fileStatus, bus, SELECT_ALL_FILTER)
 
-      val conf = this.conf.clone()
-      val secManager = new SecurityManager(conf)
-      secManager.setAcls(HISTORY_UI_ACLS_ENABLE)
-      secManager.setAdminAcls(attemptWrapper.adminAcls.getOrElse(""))
-      secManager.setViewAcls(applicationInfo.attempts.head.info.sparkUser, attemptWrapper.adminAclsGroups.getOrElse(""))
-      secManager.setAdminAclsGroups(attemptWrapper.adminAclsGroups.getOrElse(""))
-      secManager.setViewAclsGroups(attemptWrapper.viewAclsGroups.getOrElse(""))
-      
-      val kvstore = createInMemoryStore(attemptWrapper)
-      val something = attemptWrapper.info.appSparkVersion
-      val ui = SparkUI.create(None, new AppStatusStore(kvstore), conf, secManager, applicationInfo.info.name,
-        HistoryServer.getAttemptURI(applicationInfo.info.id, attemptWrapper.info.attemptId),
-        attemptWrapper.info.startTime.getTime(),
-        attemptWrapper.info.appSparkVersion
-      )
+    listener.applicationInfo.flatMap(appInfo => {
+      appInfo.attempts.find(_.info.attemptId == attemptId).map( attemptInfo => {
+        val conf = this.conf.clone()
+        val secManager = new SecurityManager(conf)
+        secManager.setAcls(HISTORY_UI_ACLS_ENABLE)
+        secManager.setAdminAcls(attemptInfo.adminAcls.getOrElse(""))
+        secManager.setViewAcls(attemptInfo.info.sparkUser, attemptInfo.adminAclsGroups.getOrElse(""))
+        secManager.setAdminAclsGroups(attemptInfo.adminAclsGroups.getOrElse(""))
+        secManager.setViewAclsGroups(attemptInfo.viewAclsGroups.getOrElse(""))
 
-    val loadedUI = LoadedAppUI(ui)
+        val kvstore = createInMemoryStore(attemptInfo)
+        val something = attemptInfo.info.appSparkVersion
+        val ui = SparkUI.create(None, new AppStatusStore(kvstore), conf, secManager, appInfo.info.name,
+          HistoryServer.getAttemptURI(appInfo.info.id, attemptInfo.info.attemptId),
+          attemptInfo.info.startTime.getTime(),
+          attemptInfo.info.appSparkVersion
+        )
 
-    synchronized {
-      activeUIs((appId, attemptId)) = loadedUI
-    }
-
-    loadedUI
+        LoadedAppUI(ui)
+      })
     })
   }
   
