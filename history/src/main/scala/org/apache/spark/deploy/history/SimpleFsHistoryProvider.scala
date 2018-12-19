@@ -84,43 +84,26 @@ private[history] class SimpleFsHistoryProvider(conf: SparkConf, clock: Clock)
   
   override def onUIDetached(appId: String, attemptId: Option[String], ui: SparkUI): Unit = { }
   
-  def getApplicationAndAttemptInfo(fileStatus: FileStatus): (Option[ApplicationInfoWrapper], Option[ApplicationAttemptInfo]) = {
-    // When getting the Application Info, we really only want the key details - Name, ID, start time, stop time
+  def getApplicationInfoWrapper(appId: String): Option[ApplicationInfoWrapper] = {
     val eventsFilter: ReplayEventsFilter = { eventString =>
       eventString.startsWith(APPL_START_EVENT_PREFIX) ||
       eventString.startsWith(APPL_END_EVENT_PREFIX)
     }
-
-    // need to get the ApplicationAttemptInfo from the replay to return
+    val fileStatus = fs.getFileStatus(new Path(logDir, appId))
     val bus = new ReplayListenerBus()
     val listener = new AppListingListener(fileStatus, clock)
     bus.addListener(listener)
     replay(fileStatus, bus, eventsFilter)
 
-    (listener.applicationInfo, listener.applicationAttemptInfo)
-  }
-
-  def getApplicationAttemptInfo(fileStatus: FileStatus): Option[ApplicationAttemptInfo] = {
-    getApplicationAndAttemptInfo(fileStatus)._2
-  }
-  
-  def getApplicationInfoWrapper(appId: String): Option[ApplicationInfoWrapper] = {
-    val fileStatus = fs.getFileStatus(new Path(logDir, appId))
-    getApplicationAndAttemptInfo(fileStatus)._1
+    listener.applicationInfo
   }
 
   override def getApplicationInfo(appId: String): Option[ApplicationInfo] = {
-    getApplicationInfoWrapper(appId).map(app => {app.info})
+    getApplicationInfoWrapper(appId).map(app => app.info)
   }
 
   override def getAppUI(appId: String, attemptId: Option[String]): Option[LoadedAppUI] = {
-    val fileStatus = fs.getFileStatus(new Path(logDir, appId))
-    val bus = new ReplayListenerBus()
-    val listener = new AppListingListener(fileStatus, clock)
-    bus.addListener(listener)
-    replay(fileStatus, bus, SELECT_ALL_FILTER)
-
-    listener.applicationInfo.flatMap(appInfo => {
+    getApplicationInfoWrapper(appId).flatMap(appInfo => {
       appInfo.attempts.find(_.info.attemptId == attemptId).map( attemptInfo => {
         val conf = this.conf.clone()
         val secManager = new SecurityManager(conf)
@@ -131,7 +114,6 @@ private[history] class SimpleFsHistoryProvider(conf: SparkConf, clock: Clock)
         secManager.setViewAclsGroups(attemptInfo.viewAclsGroups.getOrElse(""))
 
         val kvstore = createInMemoryStore(attemptInfo)
-        val something = attemptInfo.info.appSparkVersion
         val ui = SparkUI.create(None, new AppStatusStore(kvstore), conf, secManager, appInfo.info.name,
           HistoryServer.getAttemptURI(appInfo.info.id, attemptInfo.info.attemptId),
           attemptInfo.info.startTime.getTime(),
@@ -295,129 +277,3 @@ private[history] object SimpleFsHistoryProvider {
 
   private val APPL_END_EVENT_PREFIX = "{\"Event\":\"SparkListenerApplicationEnd\"" 
 }
-
-private[history] class AttemptInfoWrapper(
-    val info: ApplicationAttemptInfo,
-    val logPath: String,
-    val fileSize: Long,
-    val adminAcls: Option[String],
-    val viewAcls: Option[String],
-    val adminAclsGroups: Option[String],
-    val viewAclsGroups: Option[String])
-
-private[history] class AppListingListener(log: FileStatus, clock: Clock) extends SparkListener {
-
-  private val app = new MutableApplicationInfo()
-  private val attempt = new MutableAttemptInfo(log.getPath().getName(), log.getLen())
-
-  override def onApplicationStart(event: SparkListenerApplicationStart): Unit = {
-    app.id = event.appId.orNull
-    app.name = event.appName
-
-    attempt.attemptId = event.appAttemptId
-    attempt.startTime = new Date(event.time)
-    attempt.lastUpdated = new Date(clock.getTimeMillis())
-    attempt.sparkUser = event.sparkUser
-  }
-
-  override def onApplicationEnd(event: SparkListenerApplicationEnd): Unit = {
-    attempt.endTime = new Date(event.time)
-    attempt.lastUpdated = new Date(log.getModificationTime())
-    attempt.duration = event.time - attempt.startTime.getTime()
-    attempt.completed = true
-  }
-
-  override def onEnvironmentUpdate(event: SparkListenerEnvironmentUpdate): Unit = {
-    val allProperties = event.environmentDetails("Spark Properties").toMap
-    attempt.viewAcls = allProperties.get("spark.ui.view.acls")
-    attempt.adminAcls = allProperties.get("spark.admin.acls")
-    attempt.viewAclsGroups = allProperties.get("spark.ui.view.acls.groups")
-    attempt.adminAclsGroups = allProperties.get("spark.admin.acls.groups")
-  }
-
-  override def onOtherEvent(event: SparkListenerEvent): Unit = event match {
-    case SparkListenerLogStart(sparkVersion) =>
-      attempt.appSparkVersion = sparkVersion
-    case _ =>
-  }
-
-  def applicationInfo: Option[ApplicationInfoWrapper] = {
-    if (app.id != null) {
-      Some(app.toView())
-    } else {
-      None
-    }
-  }
-  
-  def applicationAttemptInfo: Option[ApplicationAttemptInfo] = {
-    if (app.id != null) {
-      Some(app.toAttempt())
-    } else {
-      None
-    }
-  }
-
-  private class MutableApplicationInfo {
-    var id: String = null
-    var name: String = null
-    var coresGranted: Option[Int] = None
-    var maxCores: Option[Int] = None
-    var coresPerExecutor: Option[Int] = None
-    var memoryPerExecutorMB: Option[Int] = None
-
-    def toView(): ApplicationInfoWrapper = {
-      val apiInfo = ApplicationInfo(id, name, coresGranted, maxCores, coresPerExecutor,
-        memoryPerExecutorMB, Nil)
-      new ApplicationInfoWrapper(apiInfo, List(attempt.toView()))
-    }
-
-    def toAttempt(): ApplicationAttemptInfo = {
-      val attemptInfo = ApplicationInfo(id, name, coresGranted, maxCores, coresPerExecutor,
-        memoryPerExecutorMB, Nil).attempts.head
-      attemptInfo.copy()
-    }
-  }
-
-  private class MutableAttemptInfo(logPath: String, fileSize: Long) {
-    var attemptId: Option[String] = None
-    var startTime = new Date(-1)
-    var endTime = new Date(-1)
-    var lastUpdated = new Date(-1)
-    var duration = 0L
-    var sparkUser: String = null
-    var completed = false
-    var appSparkVersion = ""
-
-    var adminAcls: Option[String] = None
-    var viewAcls: Option[String] = None
-    var adminAclsGroups: Option[String] = None
-    var viewAclsGroups: Option[String] = None
-
-    def toView(): AttemptInfoWrapper = {
-      val apiInfo = toAttempt()
-      new AttemptInfoWrapper(
-        apiInfo,
-        logPath,
-        fileSize,
-        adminAcls,
-        viewAcls,
-        adminAclsGroups,
-        viewAclsGroups)
-    }
-    
-    def toAttempt(): ApplicationAttemptInfo = {
-      new ApplicationAttemptInfo(
-        attemptId,
-        startTime,
-        endTime,
-        lastUpdated,
-        duration,
-        sparkUser,
-        completed,
-        appSparkVersion)
-    }
-
-  }
-
-}
-
