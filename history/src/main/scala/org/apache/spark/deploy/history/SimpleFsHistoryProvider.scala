@@ -104,7 +104,7 @@ private[history] class SimpleFsHistoryProvider(conf: SparkConf, clock: Clock)
 
   override def getAppUI(appId: String, attemptId: Option[String]): Option[LoadedAppUI] = {
     getApplicationInfoWrapper(appId).flatMap(appInfo => {
-      appInfo.attempts.find(_.info.attemptId == attemptId).map( attemptInfo => {
+      appInfo.attempts.find(_.info.attemptId == attemptId).map(attemptInfo => {
         val conf = this.conf.clone()
         val secManager = new SecurityManager(conf)
         secManager.setAcls(HISTORY_UI_ACLS_ENABLE)
