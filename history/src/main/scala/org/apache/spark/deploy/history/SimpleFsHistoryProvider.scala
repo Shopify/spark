@@ -17,17 +17,14 @@
 
 package org.apache.spark.deploy.history
 
-import java.io.{FileNotFoundException, IOException}
 import java.util.zip.{ZipEntry, ZipOutputStream}
-import java.util.{Date, ServiceLoader}
+import java.util.ServiceLoader
 
 import scala.collection.JavaConverters._
-import scala.collection.mutable
 import scala.xml.Node
 
 import com.google.common.io.ByteStreams
 import org.apache.hadoop.fs.{FileStatus, Path}
-import org.apache.hadoop.security.AccessControlException
 
 import org.apache.spark.{SecurityManager, SparkConf, SparkException}
 import org.apache.spark.deploy.SparkHadoopUtil
@@ -36,7 +33,7 @@ import org.apache.spark.scheduler._
 import org.apache.spark.scheduler.ReplayListenerBus
 import org.apache.spark.status.{AppStatusStore, AppStatusListener, AppHistoryServerPlugin, ElementTrackingStore}
 import org.apache.spark.status.config._
-import org.apache.spark.status.api.v1.{ApplicationInfo, ApplicationAttemptInfo}
+import org.apache.spark.status.api.v1.ApplicationInfo
 import org.apache.spark.ui.SparkUI
 import org.apache.spark.util.kvstore.{KVStore, InMemoryStore}
 import org.apache.spark.util.{Clock, SystemClock, Utils}
@@ -74,7 +71,7 @@ private[history] class SimpleFsHistoryProvider(conf: SparkConf, clock: Clock)
   private val hadoopConf = SparkHadoopUtil.get.newConfiguration(conf)
   private val fs = new Path(logDir).getFileSystem(hadoopConf)
 
-  private[history] def initialize(): Unit = {}
+  private def initialize(): Unit = {}
   
   override def getEventLogsUnderProcess(): Int = 0
 
@@ -99,7 +96,7 @@ private[history] class SimpleFsHistoryProvider(conf: SparkConf, clock: Clock)
   }
 
   override def getApplicationInfo(appId: String): Option[ApplicationInfo] = {
-    getApplicationInfoWrapper(appId).map(app => app.info)
+    getApplicationInfoWrapper(appId).map(_ info)
   }
 
   override def getAppUI(appId: String, attemptId: Option[String]): Option[LoadedAppUI] = {
