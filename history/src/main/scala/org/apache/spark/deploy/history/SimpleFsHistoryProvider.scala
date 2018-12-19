@@ -158,6 +158,7 @@ private[history] class SimpleFsHistoryProvider(conf: SparkConf, clock: Clock)
      * the name of the file being compressed.
      */
     def zipFileToStream(file: Path, entryName: String, outputStream: ZipOutputStream): Unit = {
+      // Guarantee we are using the Hadoop FS
       val fs = file.getFileSystem(hadoopConf)
       val inputStream = fs.open(file, 1 * 1024 * 1024) // 1MB Buffer
       try {
