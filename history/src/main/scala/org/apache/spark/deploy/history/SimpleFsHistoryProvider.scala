@@ -116,7 +116,8 @@ private[history] class SimpleFsHistoryProvider(conf: SparkConf, clock: Clock)
           attemptInfo.info.startTime.getTime(),
           attemptInfo.info.appSparkVersion
         )
-
+        loadPlugins().foreach(_.setupUI(ui))
+        
         LoadedAppUI(ui)
       })
     })
@@ -141,7 +142,6 @@ private[history] class SimpleFsHistoryProvider(conf: SparkConf, clock: Clock)
     // actually read, we may never refresh the app.  FileStatus is guaranteed to be static
     // after it's created, so we get a file size that is no bigger than what is actually read.
     Utils.tryWithResource(EventLoggingListener.openEventLog(logPath, fs)) { in =>
-      logInfo("Trying to replay bus: $isCompleted, $eventsFilter")
       bus.replay(in, logPath.toString, !isCompleted, eventsFilter)
       logInfo(s"Finished parsing $logPath")
     }
