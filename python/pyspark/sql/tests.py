@@ -724,6 +724,42 @@ class SQLTests(ReusedSQLTestCase):
         self.assertRaisesRegexp(AnalysisException, "Can not load class non_existed_udaf",
                                 lambda: spark.udf.registerJavaUDAF("udaf1", "non_existed_udaf"))
 
+    def test_udf_no_nulls(self):
+        from pyspark.sql.functions import udf
+        plus_four = udf(lambda x: x + 4, IntegerType()).asNonNullable()
+        df = self.spark.range(10)
+        res = df.select(plus_four(df['id']).alias('plus_four'))
+        self.assertFalse(plus_four.nullable)
+        self.assertFalse(res.schema['plus_four'].nullable)
+        self.assertEqual(res.agg({'plus_four': 'sum'}).collect()[0][0], 85)
+
+    def test_udf_with_callable_no_nulls(self):
+        df = self.spark.range(10)
+
+        class PlusFour:
+            def __call__(self, col):
+                if col is not None:
+                    return col + 4
+                else:
+                    return 0
+
+        call = PlusFour()
+        pudf = UserDefinedFunction(call, LongType()).asNonNullable()
+        res = df.select(pudf(df['id']).alias('plus_four'))
+        self.assertFalse(pudf.nullable)
+        self.assertFalse(res.schema['plus_four'].nullable)
+        self.assertEqual(res.agg({'plus_four': 'sum'}).collect()[0][0], 85)
+
+    def test_udf_no_nulls_returns_null(self):
+        from pyspark.sql.functions import udf
+        plus_four = udf(lambda x: x + 4 if x > 0 else None, IntegerType()).asNonNullable()
+        df = self.spark.range(10)
+        res = df.select(plus_four(df['id']).alias('plus_four'))
+        self.assertFalse(plus_four.nullable)
+        self.assertFalse(res.schema['plus_four'].nullable)
+        with self.assertRaisesRegexp(Exception, "Cannot return null value.*"):
+            res.agg({'plus_four': 'sum'}).collect()
+
     def test_linesep_text(self):
         df = self.spark.read.text("python/test_support/sql/ages_newlines.csv", lineSep=",")
         expected = [Row(value=u'Joe'), Row(value=u'20'), Row(value=u'"Hi'),
