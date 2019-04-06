@@ -54,15 +54,16 @@ case class PythonUDF(
     children: Seq[Expression],
     evalType: Int,
     udfDeterministic: Boolean,
+    udfNullable: Boolean = true,
     resultId: ExprId = NamedExpression.newExprId)
   extends Expression with Unevaluable with NonSQLExpression with UserDefinedExpression {
 
   override lazy val deterministic: Boolean = udfDeterministic && children.forall(_.deterministic)
 
+  override lazy val nullable: Boolean = udfNullable
+
   override def toString: String = s"$name(${children.mkString(", ")})"
 
   lazy val resultAttribute: Attribute = AttributeReference(toPrettySQL(this), dataType, nullable)(
     exprId = resultId)
-
-  override def nullable: Boolean = true
 }
