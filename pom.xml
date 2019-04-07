@@ -2704,6 +2704,15 @@
     </profile>
 
     <profile>
+      <id>hadoop-2.9</id>
+      <properties>
+        <hadoop.version>2.9.1</hadoop.version>
+        <curator.version>2.7.1</curator.version>
+        <slf4j.version>1.7.25</slf4j.version>
+      </properties>
+    </profile>
+
+    <profile>
       <id>hadoop-3.1</id>
       <properties>
         <hadoop.version>3.1.0</hadoop.version>
