@@ -30,6 +30,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import scala.Option;
 
 import static org.apache.parquet.filter2.compat.RowGroupFilter.filterRowGroups;
@@ -88,6 +90,8 @@ public abstract class SpecificParquetRecordReaderBase<T> extends RecordReader<Vo
 
   protected ParquetFileReader reader;
 
+  private static final Logger logger = LoggerFactory.getLogger(SpecificParquetRecordReaderBase.class);
+
   @Override
   public void initialize(InputSplit inputSplit, TaskAttemptContext taskAttemptContext)
       throws IOException, InterruptedException {
@@ -106,6 +110,12 @@ public abstract class SpecificParquetRecordReaderBase<T> extends RecordReader<Vo
       MessageType fileSchema = footer.getFileMetaData().getSchema();
       FilterCompat.Filter filter = getFilter(configuration);
       blocks = filterRowGroups(filter, footer.getBlocks(), fileSchema);
+
+      // Log information about skipped blocks.
+      Set<BlockMetaData> set1 = new HashSet(footer.getBlocks());
+      Set<BlockMetaData> set2 = new HashSet(blocks);
+      set1.removeAll(set2);
+      logger.warn(String.format("Skipping %d of %d blocks [%s].", blocks.size(), footer.getBlocks().size(), this.file));
     } else {
       // otherwise we find the row groups that were selected on the client
       footer = readFooter(configuration, file, NO_FILTER);
