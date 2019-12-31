@@ -174,14 +174,14 @@ _collect_set_doc = """
     """
 _functions_1_6 = {
     # unary math functions
-    'stddev': 'Aggregate function: returns the unbiased sample standard deviation of' +
-              ' the expression in a group.',
+    'stddev': 'Aggregate function: alias for stddev_samp.',
     'stddev_samp': 'Aggregate function: returns the unbiased sample standard deviation of' +
                    ' the expression in a group.',
     'stddev_pop': 'Aggregate function: returns population standard deviation of' +
                   ' the expression in a group.',
-    'variance': 'Aggregate function: returns the population variance of the values in a group.',
-    'var_samp': 'Aggregate function: returns the unbiased variance of the values in a group.',
+    'variance': 'Aggregate function: alias for var_samp.',
+    'var_samp': 'Aggregate function: returns the unbiased sample variance of' +
+                ' the values in a group.',
     'var_pop':  'Aggregate function: returns the population variance of the values in a group.',
     'skewness': 'Aggregate function: returns the skewness of the values in a group.',
     'kurtosis': 'Aggregate function: returns the kurtosis of the values in a group.',
@@ -1521,8 +1521,9 @@ def format_string(format, *cols):
     """
     Formats the arguments in printf-style and returns the result as a string column.
 
-    :param col: the column name of the numeric value to be formatted
-    :param d: the N decimal places
+    :param format: string that can contain embedded format tags and used as result column's value
+    :param cols: list of column names (string) or list of :class:`Column` expressions to
+        be used in formatting
 
     >>> df = spark.createDataFrame([(5, "hello")], ['a', 'b'])
     >>> df.select(format_string('%d %s', df.a, df.b).alias('v')).collect()

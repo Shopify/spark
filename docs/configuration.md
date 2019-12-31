@@ -530,7 +530,7 @@ Apart from these, the following properties are also available, and may be useful
     option <code>--repositories</code> or <code>spark.jars.repositories</code> will also be included.
     Useful for allowing Spark to resolve artifacts from behind a firewall e.g. via an in-house
     artifact server like Artifactory. Details on the settings file format can be
-    found at http://ant.apache.org/ivy/history/latest-milestone/settings.html
+    found at <a href="http://ant.apache.org/ivy/history/latest-milestone/settings.html">Settings Files</a>
   </td>
 </tr>
  <tr>
@@ -656,6 +656,17 @@ Apart from these, the following properties are also available, and may be useful
   <td>
     (Netty only) How long to wait between retries of fetches. The maximum delay caused by retrying
     is 15 seconds by default, calculated as <code>maxRetries * retryWait</code>.
+  </td>
+</tr>
+<tr>
+  <td><code>spark.shuffle.io.backLog</code></td>
+  <td>64</td>
+  <td>
+    Length of the accept queue for the shuffle service. For large applications, this value may
+    need to be increased, so that incoming connections are not dropped if the service cannot keep
+    up with a large number of connections arriving in a short period of time. This needs to
+    be configured wherever the shuffle service itself is running, which may be outside of the
+    application (see <code>spark.shuffle.service.enabled</code> option below).
   </td>
 </tr>
 <tr>
@@ -880,11 +891,13 @@ Apart from these, the following properties are also available, and may be useful
 </tr>
 <tr>
   <td><code>spark.ui.showConsoleProgress</code></td>
-  <td>true</td>
+  <td>false</td>
   <td>
     Show the progress bar in the console. The progress bar shows the progress of stages
     that run for longer than 500ms. If multiple stages run at the same time, multiple
     progress bars will be displayed on the same line.
+    <br/>
+    <em>Note:</em> In shell environment, the default value of spark.ui.showConsoleProgress is true.
   </td>
 </tr>
 <tr>
@@ -960,6 +973,14 @@ Apart from these, the following properties are also available, and may be useful
     Whether to compress broadcast variables before sending them. Generally a good idea.
     Compression will use <code>spark.io.compression.codec</code>.
   </td>
+</tr>
+<tr>
+  <td><code>spark.checkpoint.compress</code></td>
+  <td>false</td>
+  <td>
+    Whether to compress RDD checkpoints. Generally a good idea.
+    Compression will use <code>spark.io.compression.codec</code>.
+   </td>
 </tr>
 <tr>
   <td><code>spark.io.compression.codec</code></td>
@@ -1456,6 +1477,15 @@ Apart from these, the following properties are also available, and may be useful
   <td>
     Port for the driver to listen on.
     This is used for communicating with the executors and the standalone Master.
+  </td>
+</tr>
+<tr>
+  <td><code>spark.rpc.io.backLog</code></td>
+  <td>64</td>
+  <td>
+    Length of the accept queue for the RPC server. For large applications, this value may
+    need to be increased, so that incoming connections are not dropped when a large number of
+    connections arrives in a short period of time.
   </td>
 </tr>
 <tr>

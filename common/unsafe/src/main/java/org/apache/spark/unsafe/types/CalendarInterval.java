@@ -18,6 +18,7 @@
 package org.apache.spark.unsafe.types;
 
 import java.io.Serializable;
+import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -66,6 +67,10 @@ public final class CalendarInterval implements Serializable {
     }
   }
 
+  /**
+   * Convert a string to CalendarInterval. Return null if the input string is not a valid interval.
+   * This method is case-sensitive and all characters in the input string should be in lower case.
+   */
   public static CalendarInterval fromString(String s) {
     if (s == null) {
       return null;
@@ -85,6 +90,26 @@ public final class CalendarInterval implements Serializable {
       microseconds += toLong(m.group(9));
       return new CalendarInterval((int) months, microseconds);
     }
+  }
+
+  /**
+   * Convert a string to CalendarInterval. Unlike fromString, this method is case-insensitive and
+   * will throw IllegalArgumentException when the input string is not a valid interval.
+   *
+   * @throws IllegalArgumentException if the string is not a valid internal.
+   */
+  public static CalendarInterval fromCaseInsensitiveString(String s) {
+    if (s == null || s.trim().isEmpty()) {
+      throw new IllegalArgumentException("Interval cannot be null or blank.");
+    }
+    String sInLowerCase = s.trim().toLowerCase(Locale.ROOT);
+    String interval =
+      sInLowerCase.startsWith("interval ") ? sInLowerCase : "interval " + sInLowerCase;
+    CalendarInterval cal = fromString(interval);
+    if (cal == null) {
+      throw new IllegalArgumentException("Invalid interval: " + s);
+    }
+    return cal;
   }
 
   public static long toLongWithRange(String fieldName,
@@ -152,7 +177,8 @@ public final class CalendarInterval implements Serializable {
         long minutes = toLongWithRange("minute", m.group(4), 0, 59);
         long seconds = toLongWithRange("second", m.group(5), 0, 59);
         // Hive allow nanosecond precision interval
-        long nanos = toLongWithRange("nanosecond", m.group(7), 0L, 999999999L);
+        String nanoStr = m.group(7) == null ? null : (m.group(7) + "000000000").substring(0, 9);
+        long nanos = toLongWithRange("nanosecond", nanoStr, 0L, 999999999L);
         result = new CalendarInterval(0, sign * (
           days * MICROS_PER_DAY + hours * MICROS_PER_HOUR + minutes * MICROS_PER_MINUTE +
           seconds * MICROS_PER_SECOND + nanos / 1000L));
@@ -319,6 +345,8 @@ public final class CalendarInterval implements Serializable {
       appendUnit(sb, rest / MICROS_PER_MILLI, "millisecond");
       rest %= MICROS_PER_MILLI;
       appendUnit(sb, rest, "microsecond");
+    } else if (months == 0) {
+      sb.append(" 0 microseconds");
     }
 
     return sb.toString();
