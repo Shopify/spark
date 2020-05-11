@@ -196,7 +196,10 @@ class TimestampType(AtomicType):
     def fromInternal(self, ts):
         if ts is not None:
             # using int to avoid precision loss in float
-            return datetime.datetime.fromtimestamp(ts // 1000000).replace(microsecond=ts % 1000000)
+            if time.timezone == 0:
+                return datetime.datetime.utcfromtimestamp(ts // 1000000).replace(microsecond=ts % 1000000)
+            else:
+                return datetime.datetime.fromtimestamp(ts // 1000000).replace(microsecond=ts % 1000000)
 
 
 class DecimalType(FractionalType):
